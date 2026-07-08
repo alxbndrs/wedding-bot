@@ -12,6 +12,7 @@ for a normal poll; see --help for the maintenance flags.
 from __future__ import annotations
 
 import argparse
+import base64
 import html
 import http.cookiejar
 import json
@@ -41,6 +42,13 @@ BOOKING_URL = os.environ.get(
 )
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
+# Twilio voice call — optional. When all four are set, a real phone call is
+# placed (in addition to Telegram) when a slot is found, to wake you up.
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM = os.environ.get("TWILIO_FROM", "")  # your Twilio phone number
+CALL_TO = os.environ.get("CALL_TO", "")  # the phone number to ring (E.164, +45...)
 
 STATE_FILE = os.environ.get(
     "STATE_FILE", os.path.expanduser("~/state/state.json")
@@ -206,6 +214,70 @@ def send_telegram(text: str) -> bool:
         return False
 
 
+def place_call() -> bool:
+    """Ring CALL_TO via Twilio and read a spoken alert. Returns True on success.
+
+    Uses Twilio's REST API directly (inline TwiML via the ``Twiml`` param, so no
+    externally hosted TwiML URL is needed). No-op if Twilio isn't configured.
+    """
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM and CALL_TO):
+        return False
+    spoken = (
+        "Hello. A wedding ceremony slot is now available. "
+        "Open Telegram and book it now. "
+    )
+    # Repeat so a groggy listener catches it; pause between repeats.
+    twiml = (
+        "<Response>"
+        f'<Say voice="alice">{html.escape(spoken)}</Say>'
+        "<Pause length=\"1\"/>"
+        f'<Say voice="alice">{html.escape(spoken)}</Say>'
+        "</Response>"
+    )
+    url = (
+        f"https://api.twilio.com/2010-04-01/Accounts/"
+        f"{TWILIO_ACCOUNT_SID}/Calls.json"
+    )
+    data = urllib.parse.urlencode(
+        {"To": CALL_TO, "From": TWILIO_FROM, "Twiml": twiml}
+    ).encode()
+    auth = base64.b64encode(
+        f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()
+    ).decode()
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Authorization": f"Basic {auth}", "User-Agent": USER_AGENT},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+            if body.get("sid"):
+                return True
+            log(f"twilio call error: {body}")
+            return False
+    except urllib.error.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:300]
+        except OSError:
+            pass
+        log(f"twilio call failed: HTTP {exc.code} {detail}")
+        return False
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        log(f"twilio call failed: {exc}")
+        return False
+
+
+def notify_slot(available: list[dict]) -> bool:
+    """Alert via every configured channel. True if at least one delivered."""
+    delivered_tg = send_telegram(build_alert(available))
+    delivered_call = place_call()
+    if delivered_call:
+        log("phone call placed via Twilio")
+    return delivered_tg or delivered_call
+
+
 # --- State ------------------------------------------------------------------
 
 
@@ -310,13 +382,13 @@ def run_poll(state: dict) -> dict:
     ]
 
     if to_alert:
-        if send_telegram(build_alert(available)):
+        if notify_slot(available):
             state["notified_today"] = True
             for d in available:
                 last_alert[d["name"]] = now
-            log(f"ALERT sent for {[d['name'] for d in available]}")
+            log(f"ALERT delivered for {[d['name'] for d in available]}")
         else:
-            log("alert NOT sent (telegram failure); will retry next run")
+            log("alert NOT delivered (all channels failed); will retry next run")
     state["last_alert"] = {
         name: ts for name, ts in last_alert.items() if name in avail_names
     }
@@ -333,6 +405,15 @@ def cmd_test_notify() -> int:
         "✅ <b>Wedding bot deployed.</b> Notifications are working — "
         "you'll get a message here the moment a slot opens."
     )
+    return 0 if ok else 1
+
+
+def cmd_test_call() -> int:
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM and CALL_TO):
+        log("Twilio not configured (need SID, auth token, from, CALL_TO)")
+        return 1
+    ok = place_call()
+    log("test call placed" if ok else "test call failed")
     return 0 if ok else 1
 
 
@@ -362,6 +443,11 @@ def main(argv: list[str] | None = None) -> int:
         help="send a one-off 'deployed OK' message and exit",
     )
     ap.add_argument(
+        "--test-call",
+        action="store_true",
+        help="place a one-off test phone call via Twilio and exit",
+    )
+    ap.add_argument(
         "--heartbeat",
         action="store_true",
         help="send a status summary and exit (does not poll)",
@@ -370,6 +456,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.test_notify:
         return cmd_test_notify()
+    if args.test_call:
+        return cmd_test_call()
 
     state = load_state()
     if args.heartbeat:

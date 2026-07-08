@@ -51,17 +51,26 @@ class ParseDatesTest(unittest.TestCase):
 class PollLogicTest(unittest.TestCase):
     def setUp(self):
         self._sent = []
+        self._calls = 0
         self._orig_send = wedding_bot.send_telegram
+        self._orig_call = wedding_bot.place_call
         self._orig_fetch = wedding_bot.fetch_timeselection
         wedding_bot.send_telegram = self._fake_send
+        wedding_bot.place_call = self._fake_call
 
     def tearDown(self):
         wedding_bot.send_telegram = self._orig_send
+        wedding_bot.place_call = self._orig_call
         wedding_bot.fetch_timeselection = self._orig_fetch
 
+    # Default doubles: telegram succeeds, call is "not configured" (no-op).
     def _fake_send(self, text):
         self._sent.append(text)
         return True
+
+    def _fake_call(self):
+        self._calls += 1
+        return False
 
     def _fetch(self, name):
         def _f():
@@ -82,9 +91,28 @@ class PollLogicTest(unittest.TestCase):
         self.assertEqual(len(self._sent), 1)
         self.assertIn("Monday August 17", self._sent[0])
         self.assertTrue(state["notified_today"])
+        # Both channels are attempted on a hit.
+        self.assertEqual(self._calls, 1)
         # Second run the same day must NOT poll or re-alert (stop-once-notified).
         state = wedding_bot.run_poll(state)
         self.assertEqual(len(self._sent), 1)
+        self.assertEqual(self._calls, 1)
+
+    def test_latches_when_only_call_succeeds(self):
+        # Telegram fails, phone call succeeds -> still counts as delivered.
+        wedding_bot.send_telegram = lambda text: False
+        wedding_bot.place_call = lambda: True
+        wedding_bot.fetch_timeselection = self._fetch("has_slots.html")
+        state = wedding_bot.run_poll({})
+        self.assertTrue(state["notified_today"])
+
+    def test_no_delivery_does_not_latch(self):
+        # All channels fail -> do NOT latch, so the next run retries.
+        wedding_bot.send_telegram = lambda text: False
+        wedding_bot.place_call = lambda: False
+        wedding_bot.fetch_timeselection = self._fetch("has_slots.html")
+        state = wedding_bot.run_poll({})
+        self.assertFalse(state["notified_today"])
 
     def test_new_day_resets_latch(self):
         wedding_bot.fetch_timeselection = self._fetch("has_slots.html")

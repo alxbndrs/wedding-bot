@@ -1,8 +1,10 @@
 # wedding-bot
 
-Watches the Aabenraa civil-wedding booking site and sends you a **Telegram
-message the instant a bookable slot appears**, so you can open the browser and
-book it yourself. It does not book anything automatically.
+Watches the Aabenraa civil-wedding booking site and, the instant a bookable slot
+appears, **sends you a Telegram message and (optionally) rings your phone** so
+you can open the browser and book it yourself. It does not book anything
+automatically. The phone call is what wakes you at 5 AM; the Telegram message
+carries the tappable booking link.
 
 New ceremony slots are released around **05:00 Danish time**, ~60 days ahead, on
 weekdays (Mon–Thu are ceremony days). The bot polls every minute in a window
@@ -17,7 +19,8 @@ around that drop and stops for the day once it has notified you.
      "multiple tabs" error.
   2. Parses every date section and detects which have bookable time slots.
   3. If any date is available, sends a Telegram alert with a link to the booking
-     page, then **latches** so it won't poll or re-alert again that day.
+     page and (if Twilio is configured) places a phone call that reads out a
+     spoken alert, then **latches** so it won't poll or re-alert again that day.
   4. Diffs against `~/state/state.json` for de-duplication, counts consecutive
      failures, and warns once (via Telegram) if the site scrape keeps failing.
 - Deployed to your OVH server by Ansible as a dedicated non-sudo `weddingbot`
@@ -43,6 +46,23 @@ to watch a different type.
    ```
    The number after `"id":` is your `telegram_chat_id`.
 
+### 1b. (Optional) Set up the phone call via Twilio
+
+A phone call is far more likely to wake you at 5 AM than a notification. To
+enable it:
+
+1. Create a [Twilio](https://www.twilio.com/try-twilio) account and buy a phone
+   number with **Voice** capability (~$1–2/month).
+2. From the Twilio Console dashboard, copy your **Account SID** and **Auth
+   Token**.
+3. Note your Twilio number (the caller) and the number to ring (your mobile),
+   both in E.164 format, e.g. `+4520123456`.
+4. On the receiving phone, add the Twilio number as a contact and put it on your
+   **emergency-bypass / allow list** so it rings through Do Not Disturb.
+
+You'll put these four values into `dev.yml` in the next step. Leave them blank to
+run Telegram-only.
+
 ### 2. Fill in server + secrets
 
 ```bash
@@ -54,6 +74,8 @@ Edit `dev.yml` (gitignored) with:
   port 2222 (the hardened admin identity); this playbook does not touch SSH,
   firewall, or any other baseline hardening.
 - `telegram_bot_token` and `telegram_chat_id` from step 1.
+- (optional) `twilio_account_sid`, `twilio_auth_token`, `twilio_from`, `call_to`
+  from step 1b — or leave blank for Telegram-only.
 
 ### 3. Deploy
 
@@ -83,8 +105,11 @@ cat ~/state/state.json                  # last check, availability, latch
 Send yourself a test / status message any time:
 ```bash
 python3 ~/bin/wedding_bot.py --test-notify   # "deployed OK" style message
+python3 ~/bin/wedding_bot.py --test-call      # place a real test phone call (Twilio)
 python3 ~/bin/wedding_bot.py --heartbeat      # last-check + current availability
 ```
+(These read your token/number from `~/.config/weddingbot.env`; run them with
+that env loaded, e.g. `set -a; . ~/.config/weddingbot.env; set +a` first.)
 
 ### Schedule
 

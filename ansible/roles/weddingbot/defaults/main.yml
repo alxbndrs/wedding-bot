@@ -22,3 +22,9 @@ weddingbot_heartbeat_oncalendar: "Mon 08:00"
 # run fail loudly rather than silently deploying a broken bot.
 telegram_bot_token: ""
 telegram_chat_id: ""
+
+# Optional Twilio phone-call alert. Blank = call disabled (Telegram only).
+twilio_account_sid: ""
+twilio_auth_token: ""
+twilio_from: ""
+call_to: ""

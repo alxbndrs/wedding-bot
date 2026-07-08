@@ -9,3 +9,11 @@ ansible_ssh_private_key_file: ~/.ssh/id_rsa
 # Telegram bot credentials (see README for how to get these).
 telegram_bot_token: "1234567890:AAExampleExampleExampleExampleExample"
 telegram_chat_id: "123456789"
+
+# Twilio phone-call alert (OPTIONAL — leave blank to disable the call and use
+# Telegram only). When all four are set, a slot-found also rings your phone and
+# reads a spoken alert. See README for where to find these in the Twilio console.
+twilio_account_sid: ""                    # "ACxxxxxxxx..."
+twilio_auth_token: ""                     # your Twilio auth token
+twilio_from: ""                           # your Twilio number, E.164 e.g. "+45..."
+call_to: ""                               # number to ring, E.164 e.g. "+4520123456"
