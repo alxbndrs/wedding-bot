@@ -108,8 +108,8 @@ python3 ~/bin/wedding_bot.py --test-notify   # "deployed OK" style message
 python3 ~/bin/wedding_bot.py --test-call      # place a real test phone call (Twilio)
 python3 ~/bin/wedding_bot.py --heartbeat      # last-check + current availability
 ```
-(These read your token/number from `~/.config/weddingbot.env`; run them with
-that env loaded, e.g. `set -a; . ~/.config/weddingbot.env; set +a` first.)
+These auto-load `~/.config/weddingbot.env`, so no need to source it first. (Point
+elsewhere with `WEDDINGBOT_ENV_FILE=/path/to/env`.)
 
 ### Schedule
 

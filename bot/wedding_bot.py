@@ -27,6 +27,35 @@ from html.parser import HTMLParser
 
 # --- Configuration (from environment) ---------------------------------------
 
+
+def _load_env_file() -> None:
+    """Populate os.environ from the bot's env file, for manual runs.
+
+    Under systemd the units already inject these via EnvironmentFile; this makes
+    the maintenance commands (--test-call, --test-notify, --heartbeat) and a
+    hand-run poll work without the caller sourcing the file first. Real
+    environment values always win (setdefault), so systemd is unaffected.
+    """
+    path = os.environ.get(
+        "WEDDINGBOT_ENV_FILE", os.path.expanduser("~/.config/weddingbot.env")
+    )
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key:
+                    os.environ.setdefault(key, value)
+    except OSError:
+        pass  # no env file (e.g. running from a checkout) — rely on real env
+
+
+_load_env_file()
+
 # The StartReservation URL establishes flow state and redirects to TimeSelection.
 # Defaults target the "without own witnesses" ceremony type from the shared link.
 START_URL = os.environ.get(
