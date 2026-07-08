@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Wedding bot weekly heartbeat
+
+[Timer]
+OnCalendar={{ weddingbot_heartbeat_oncalendar }}
+Persistent=true
+Unit=weddingbot-heartbeat.service
+
+[Install]
+WantedBy=timers.target

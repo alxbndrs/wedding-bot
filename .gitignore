@@ -1,0 +1,15 @@
+# Ansible per-host secrets (server IP, key path, Telegram token/chat id)
+ansible/inventory/host_vars/dev.yml
+ansible/*.retry
+
+# Python
+__pycache__/
+*.pyc
+
+# Local bot state / logs when running the bot from a checkout
+bot/state/
+*.log
+cookies.txt
+
+# IDE
+.idea/

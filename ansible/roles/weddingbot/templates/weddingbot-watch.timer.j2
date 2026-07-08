@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# Optional daytime cancellation watcher. OnCalendar is in the server's UTC clock.
+[Unit]
+Description=Wedding bot daytime cancellation watcher (Mon-Thu)
+
+[Timer]
+{% for spec in weddingbot_watch_oncalendar %}
+OnCalendar={{ spec }}
+{% endfor %}
+Persistent=false
+Unit=weddingbot.service
+
+[Install]
+WantedBy=timers.target

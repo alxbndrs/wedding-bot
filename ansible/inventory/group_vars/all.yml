@@ -1,0 +1,40 @@
+---
+# ---------------------------------------------------------------------------
+# Wedding-bot deployment settings. Secrets (telegram_*) come from the gitignored
+# host_vars/dev.yml, never from here.
+# ---------------------------------------------------------------------------
+
+# Dedicated non-sudo Linux user that runs the bot. Isolated from the server's
+# admin/agent accounts; owns only its own home.
+weddingbot_user: weddingbot
+
+# --- Booking flow ------------------------------------------------------------
+# StartReservation URL for the "without own witnesses" ceremony type. It
+# establishes flow state and redirects to the TimeSelection page the bot scrapes.
+weddingbot_start_url: >-
+  https://reservation.frontdesksuite.com/aabenraavielse/vielse/ReserveTime/StartReservation?pageId=b373305a-e1ef-4f58-8e27-fbfbf65b417a&buttonId=25803dc3-fdee-4af6-bc51-2c62de114ceb&culture=en&uiCulture=en
+# Public entry page the human opens to book manually after an alert.
+weddingbot_booking_url: "https://reservation.frontdesksuite.com/aabenraavielse/vielse?culture=en"
+
+# --- Poll behaviour ----------------------------------------------------------
+weddingbot_renotify_minutes: 30           # re-alert if a date is still open after this
+weddingbot_failure_alert_threshold: 10    # warn once after N consecutive scrape errors
+weddingbot_http_timeout: 30
+
+# --- Schedule ----------------------------------------------------------------
+# Slots drop at exactly 05:00 Danish time. The burst timer fires every minute
+# for ~20 min around the drop, Mon–Thu (ceremony days). Its OnCalendar windows
+# are hardcoded UTC in the timer template (DST-safe, no systemd-252 dependency —
+# see weddingbot-burst.timer.j2 for the reasoning). The bot latches after the
+# first successful alert and skips the rest of the window — no spam.
+
+# Optional daytime cancellation watcher (every 10 min). OnCalendar is in the
+# server's UTC clock; exact local hours don't matter for catching cancellations.
+# Off by default.
+weddingbot_watch_enabled: false
+weddingbot_watch_oncalendar:
+  - "Mon,Tue,Wed,Thu 05..17:00/10"   # ~07:00–19:50 Copenhagen, every 10 min
+
+# Weekly heartbeat so a silent bot can be told apart from a dead one.
+weddingbot_heartbeat_enabled: true
+weddingbot_heartbeat_oncalendar: "Mon 08:00"

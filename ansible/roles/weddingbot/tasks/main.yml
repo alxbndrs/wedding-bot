@@ -1,0 +1,131 @@
+---
+# Provision the weddingbot user and deploy the poller + systemd user timers.
+# Systemd *user* units + linger let the timers run without an active login,
+# the same approach the server repo uses for its agent runners.
+
+- name: Fail early if Telegram secrets are missing
+  ansible.builtin.assert:
+    that:
+      - telegram_bot_token | length > 0
+      - telegram_chat_id | length > 0
+    fail_msg: >-
+      telegram_bot_token / telegram_chat_id are empty. Set them in
+      inventory/host_vars/dev.yml (copy dev.yml.example). See README.
+
+- name: Create the non-sudo weddingbot user
+  ansible.builtin.user:
+    name: "{{ weddingbot_user }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+  register: weddingbot_account
+
+- name: Restrict home directory permissions
+  ansible.builtin.file:
+    path: "{{ weddingbot_account.home }}"
+    mode: "0750"
+
+- name: Enable linger (run user systemd timers without an active session)
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ weddingbot_user }}"
+    creates: "/var/lib/systemd/linger/{{ weddingbot_user }}"
+
+- name: Wait for the user runtime directory
+  ansible.builtin.wait_for:
+    path: "/run/user/{{ weddingbot_account.uid }}"
+    timeout: 30
+
+- name: Create bot directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ weddingbot_user }}"
+    group: "{{ weddingbot_user }}"
+    mode: "0750"
+  loop:
+    - "{{ weddingbot_account.home }}/bin"
+    - "{{ weddingbot_account.home }}/state"
+    - "{{ weddingbot_account.home }}/.config"
+    - "{{ weddingbot_account.home }}/.config/systemd/user"
+
+- name: Deploy the bot script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../bot/wedding_bot.py"
+    dest: "{{ weddingbot_account.home }}/bin/wedding_bot.py"
+    owner: "{{ weddingbot_user }}"
+    group: "{{ weddingbot_user }}"
+    mode: "0755"
+  register: bot_script
+
+- name: Deploy the environment file (secrets + settings)
+  ansible.builtin.template:
+    src: weddingbot.env.j2
+    dest: "{{ weddingbot_account.home }}/.config/weddingbot.env"
+    owner: "{{ weddingbot_user }}"
+    group: "{{ weddingbot_user }}"
+    mode: "0600"
+
+- name: Install systemd user units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ weddingbot_account.home }}/.config/systemd/user/{{ item }}"
+    owner: "{{ weddingbot_user }}"
+    group: "{{ weddingbot_user }}"
+    mode: "0644"
+  loop:
+    - weddingbot.service
+    - weddingbot-heartbeat.service
+    - weddingbot-burst.timer
+    - weddingbot-watch.timer
+    - weddingbot-heartbeat.timer
+  notify: reload user systemd
+
+- name: Flush handlers so daemon-reload runs before enabling timers
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the burst timer
+  become: true
+  become_user: "{{ weddingbot_user }}"
+  ansible.builtin.systemd_service:
+    name: weddingbot-burst.timer
+    scope: user
+    enabled: true
+    state: started
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ weddingbot_account.uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ weddingbot_account.uid }}/bus"
+
+- name: Enable/disable the daytime cancellation watcher
+  become: true
+  become_user: "{{ weddingbot_user }}"
+  ansible.builtin.systemd_service:
+    name: weddingbot-watch.timer
+    scope: user
+    enabled: "{{ weddingbot_watch_enabled }}"
+    state: "{{ 'started' if weddingbot_watch_enabled else 'stopped' }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ weddingbot_account.uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ weddingbot_account.uid }}/bus"
+
+- name: Enable/disable the weekly heartbeat
+  become: true
+  become_user: "{{ weddingbot_user }}"
+  ansible.builtin.systemd_service:
+    name: weddingbot-heartbeat.timer
+    scope: user
+    enabled: "{{ weddingbot_heartbeat_enabled }}"
+    state: "{{ 'started' if weddingbot_heartbeat_enabled else 'stopped' }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ weddingbot_account.uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ weddingbot_account.uid }}/bus"
+
+- name: Send a one-off "deployed OK" Telegram message
+  become: true
+  become_user: "{{ weddingbot_user }}"
+  ansible.builtin.shell:
+    cmd: >-
+      set -a && . "{{ weddingbot_account.home }}/.config/weddingbot.env" && set +a
+      && /usr/bin/python3 "{{ weddingbot_account.home }}/bin/wedding_bot.py" --test-notify
+    executable: /bin/bash
+  changed_when: false
+  when: bot_script is changed

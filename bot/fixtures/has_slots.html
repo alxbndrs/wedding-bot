@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><title></title></head>
+<body class="mdc-typography">
+<form id="mainForm" method="post" action="/aabenraavielse/vielse/ReserveTime/TimeSelection">
+	<input type="hidden" name="sessionid" id="sessionid" value="00000000-0000-0000-0000-000000000000" />
+<div class="section date-list ">
+	<!-- Synthetic AVAILABLE date: rendered as clickable time controls wired to
+	     selectTime(...), and NO "No more available time slots" warning block.
+	     Modeled on the real markup so the parser is exercised realistically. -->
+	<div class="date one-queue">
+		<div class="title title-padded d-flex">
+			<span class="available header-text">Monday August 17ᵗʰ, 2026</span>
+		</div>
+		<div class="times">
+			<button type="button" class="time btn btn-outline-primary"
+				onclick="selectTime('q1','c1','2026-08-17T09:00:00','hashA')">09:00</button>
+			<button type="button" class="time btn btn-outline-primary"
+				onclick="selectTime('q1','c1','2026-08-17T10:00:00','hashB')">10:00</button>
+		</div>
+	</div>
+	<!-- Unavailable dates alongside it. -->
+	<div class="date one-queue">
+		<div class="title title-padded d-flex">
+			<span class="not-available header-text">Tuesday August 18ᵗʰ, 2026</span>
+			<div class="ml-auto d-flex align-items-center text-danger warning-message">
+				<i class="fas fa-exclamation-triangle"></i>
+				<span>No more available time slots</span>
+			</div>
+		</div>
+	</div>
+	<div class="date one-queue">
+		<div class="title title-padded d-flex">
+			<span class="not-available header-text">Wednesday August 19ᵗʰ, 2026</span>
+			<div class="ml-auto d-flex align-items-center text-danger warning-message">
+				<i class="fas fa-exclamation-triangle"></i>
+				<span>No more available time slots</span>
+			</div>
+		</div>
+	</div>
+</div>
+</form>
+</body>
+</html>

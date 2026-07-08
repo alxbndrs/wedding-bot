@@ -1,0 +1,17 @@
+---
+# Deploy the wedding-slot watcher to the OVH server.
+#
+# Connects as the automation admin (ansible-clispi) on port 2222 — the same
+# steady-state identity as the Clispi/ovhcloud-server-setup repo. Adds only the
+# weddingbot user + its systemd user timers; does not modify SSH/firewall/other
+# hardening managed by the server repo.
+#
+# Usage (from the ansible/ directory):
+#   ansible-galaxy install -r requirements.yml
+#   ansible-playbook playbooks/site.yml
+
+- name: Deploy wedding slot watcher
+  hosts: ovh
+  gather_facts: true
+  roles:
+    - weddingbot

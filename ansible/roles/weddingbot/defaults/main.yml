@@ -1,0 +1,24 @@
+---
+# Fallback values — the real source of truth is inventory/group_vars/all.yml,
+# which overrides these. Kept here so the role is runnable standalone.
+weddingbot_user: weddingbot
+
+weddingbot_start_url: >-
+  https://reservation.frontdesksuite.com/aabenraavielse/vielse/ReserveTime/StartReservation?pageId=b373305a-e1ef-4f58-8e27-fbfbf65b417a&buttonId=25803dc3-fdee-4af6-bc51-2c62de114ceb&culture=en&uiCulture=en
+weddingbot_booking_url: "https://reservation.frontdesksuite.com/aabenraavielse/vielse?culture=en"
+
+weddingbot_renotify_minutes: 30
+weddingbot_failure_alert_threshold: 10
+weddingbot_http_timeout: 30
+
+weddingbot_watch_enabled: false
+weddingbot_watch_oncalendar:
+  - "Mon,Tue,Wed,Thu 05..17:00/10"
+
+weddingbot_heartbeat_enabled: true
+weddingbot_heartbeat_oncalendar: "Mon 08:00"
+
+# Secrets — expected from host_vars (gitignored). Empty defaults let a check
+# run fail loudly rather than silently deploying a broken bot.
+telegram_bot_token: ""
+telegram_chat_id: ""

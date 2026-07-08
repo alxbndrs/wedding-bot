@@ -1,0 +1,11 @@
+---
+# Copy to host_vars/dev.yml (gitignored) and fill in real values.
+#
+# Connection details for the OVH server — reuse the SAME values you use in the
+# Clispi/ovhcloud-server-setup repo's host_vars/dev.yml.
+ansible_host: 203.0.113.10               # your server's IP or DNS name
+ansible_ssh_private_key_file: ~/.ssh/id_rsa
+
+# Telegram bot credentials (see README for how to get these).
+telegram_bot_token: "1234567890:AAExampleExampleExampleExampleExample"
+telegram_chat_id: "123456789"
