@@ -76,6 +76,7 @@
     - weddingbot.service
     - weddingbot-heartbeat.service
     - weddingbot-burst.timer
+    - weddingbot-peak.timer
     - weddingbot-watch.timer
     - weddingbot-heartbeat.timer
   notify: reload user systemd
@@ -83,14 +84,17 @@
 - name: Flush handlers so daemon-reload runs before enabling timers
   ansible.builtin.meta: flush_handlers
 
-- name: Enable and start the burst timer
+- name: Enable and start the burst (tier 1) and peak (tier 2) timers
   become: true
   become_user: "{{ weddingbot_user }}"
   ansible.builtin.systemd_service:
-    name: weddingbot-burst.timer
+    name: "{{ item }}"
     scope: user
     enabled: true
     state: started
+  loop:
+    - weddingbot-burst.timer
+    - weddingbot-peak.timer
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ weddingbot_account.uid }}"
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ weddingbot_account.uid }}/bus"

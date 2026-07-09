@@ -22,18 +22,20 @@ weddingbot_failure_alert_threshold: 10    # warn once after N consecutive scrape
 weddingbot_http_timeout: 30
 
 # --- Schedule ----------------------------------------------------------------
-# Slots drop at exactly 05:00 Danish time. The burst timer fires every minute
-# for ~20 min around the drop, Mon–Thu (ceremony days). Its OnCalendar windows
-# are hardcoded UTC in the timer template (DST-safe, no systemd-252 dependency —
-# see weddingbot-burst.timer.j2 for the reasoning). The bot latches after the
-# first successful alert and skips the rest of the window — no spam.
+# Slots drop at exactly 05:00 Danish time. Three tiers of polling, all Mon–Thu
+# (ceremony days), all DST-safe UTC in the timer templates (no systemd-252
+# timezone dependency). The bot latches after the first successful alert and
+# stays quiet the rest of the day — no spam across any tier.
+#   * TIER 1 (burst):  every 1 min,  04:00–06:00 Copenhagen  (weddingbot-burst.timer)
+#   * TIER 2 (peak):   every 30 sec, 04:50–05:10 Copenhagen  (weddingbot-peak.timer)
+#   * TIER 3 (watch):  every 5 min,  daytime cancellations   (weddingbot-watch.timer)
 
-# Optional daytime cancellation watcher (every 10 min). OnCalendar is in the
+# Tier 3 cancellation watcher — every 5 min through the day. OnCalendar is in the
 # server's UTC clock; exact local hours don't matter for catching cancellations.
-# Off by default.
-weddingbot_watch_enabled: false
+# On by default now.
+weddingbot_watch_enabled: true
 weddingbot_watch_oncalendar:
-  - "Mon,Tue,Wed,Thu 05..17:00/10"   # ~07:00–19:50 Copenhagen, every 10 min
+  - "Mon,Tue,Wed,Thu 05..21:0/5:00"   # ~06:00/07:00–23:00 Copenhagen, every 5 min
 
 # Weekly heartbeat so a silent bot can be told apart from a dead one.
 weddingbot_heartbeat_enabled: true

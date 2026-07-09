@@ -7,6 +7,13 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=%h/.config/weddingbot.env
-# flock prevents a slow run from overlapping the next minute's trigger.
-ExecStart=/usr/bin/flock -n %h/state/run.lock /usr/bin/python3 %h/bin/wedding_bot.py
+# Overlap protection. systemd already runs only ONE instance of this service at
+# a time: if a slow run (e.g. the page is loading) is still going when the next
+# 30s/1min tick fires, that tick is a no-op — ticks are DROPPED, never queued, so
+# you can't get a pile-up of waiting processes or a double notification.
+# flock is a second layer that also covers manual runs colliding with a timer.
+# `-E 0` makes a failed lock acquisition exit 0 (silent) instead of 1, so a
+# dropped run doesn't show up as a failed unit; the Python exit code still passes
+# through when the run actually happens.
+ExecStart=/usr/bin/flock -n -E 0 %h/state/run.lock /usr/bin/python3 %h/bin/wedding_bot.py
 Nice=-5

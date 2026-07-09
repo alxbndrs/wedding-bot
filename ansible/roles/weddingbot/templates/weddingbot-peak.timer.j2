@@ -1,0 +1,30 @@
+# {{ ansible_managed }}
+# TIER 2 — peak poll: every 30 SECONDS across 04:50–05:10 Copenhagen, Mon-Thu.
+# This is the tight window right around the 05:00 drop, where slots can appear
+# and vanish within a minute. It overlaps tier 1 (every-minute) — that's fine,
+# both point at weddingbot.service and systemd runs only one at a time, so the
+# :30 ticks just add resolution the minute ticks don't have.
+#
+# Same DST handling as the burst timer (both UTC placements emitted):
+#   * CEST (summer, UTC+2): 04:50–05:10 local == 02:50–03:10 UTC
+#   * CET  (winter, UTC+1): 04:50–05:10 local == 03:50–04:10 UTC
+#
+# AccuracySec=1s is MANDATORY here: without it systemd's default 1-min accuracy
+# would collapse every :30 tick onto the minute boundary, silently turning this
+# back into a per-minute timer.
+[Unit]
+Description=Wedding bot TIER 2 peak — every 30s 04:50-05:10 Copenhagen (Mon-Thu)
+
+[Timer]
+# Summer CEST (UTC+2): 04:50–05:10 local
+OnCalendar=Mon,Tue,Wed,Thu 02:50..59:0/30
+OnCalendar=Mon,Tue,Wed,Thu 03:00..10:0/30
+# Winter CET (UTC+1): 04:50–05:10 local
+OnCalendar=Mon,Tue,Wed,Thu 03:50..59:0/30
+OnCalendar=Mon,Tue,Wed,Thu 04:00..10:0/30
+AccuracySec=1s
+Persistent=false
+Unit=weddingbot.service
+
+[Install]
+WantedBy=timers.target

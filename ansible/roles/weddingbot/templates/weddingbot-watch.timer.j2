@@ -1,12 +1,17 @@
 # {{ ansible_managed }}
-# Optional daytime cancellation watcher. OnCalendar is in the server's UTC clock.
+# TIER 3 — cancellation watch: every 5 MINUTES through the day, Mon-Thu, to
+# catch slots freed by cancellations outside the morning drop window. Exact
+# local hours don't matter here (a cancellation can pop up any time), so this is
+# left in the server's UTC clock rather than DST-doubled. The bot latches after
+# any alert, so on a day it already notified you this stays quiet.
 [Unit]
-Description=Wedding bot daytime cancellation watcher (Mon-Thu)
+Description=Wedding bot TIER 3 cancellation watch — every 5 min daytime (Mon-Thu)
 
 [Timer]
 {% for spec in weddingbot_watch_oncalendar %}
 OnCalendar={{ spec }}
 {% endfor %}
+AccuracySec=1s
 Persistent=false
 Unit=weddingbot.service
 

@@ -1,22 +1,27 @@
 # {{ ansible_managed }}
-# Burst poll: every minute for a ~20 min window around the 05:00 Copenhagen
-# slot drop, Mon-Thu. The bot latches after the first successful alert and skips
-# the rest of the window, so this never spams.
+# TIER 1 — burst poll: every MINUTE across 04:00–06:00 Copenhagen, Mon-Thu.
+# This is the wide net around the 05:00 slot drop. The bot latches after the
+# first successful alert and skips the rest of the day, so this never spams.
 #
-# The server clock is UTC. To hit 05:00 Copenhagen year-round WITHOUT depending
-# on the systemd-252 timezone prefix, we emit BOTH DST placements as UTC ranges:
-#   * CEST (summer, UTC+2): 04:50-05:10 local == 02:50-03:10 UTC
-#   * CET  (winter, UTC+1): 04:50-05:10 local == 03:50-04:10 UTC
-# On any given date only one is the real drop window; the other just polls
-# harmlessly (finds nothing, or finds slots and alerts — both fine).
+# The server clock is UTC. To hit 04:00–06:00 Copenhagen year-round WITHOUT
+# depending on the systemd-252 timezone prefix, we emit BOTH DST placements:
+#   * CEST (summer, UTC+2): 04:00–06:00 local == 02:00–04:00 UTC  -> hours 02,03
+#   * CET  (winter, UTC+1): 04:00–06:00 local == 03:00–05:00 UTC  -> hours 03,04
+# The union (hours 02,03,04) over-covers by one harmless hour on whichever side
+# isn't the real season; those extra ticks just find nothing (or find slots and
+# alert — also fine).
+#
+# AccuracySec=1s is essential: the systemd default fuzzes timers by up to 1 min
+# for power saving, which would smear these ticks. We want them on the second.
 [Unit]
-Description=Wedding bot burst poll around 05:00 Copenhagen slot drop (Mon-Thu)
+Description=Wedding bot TIER 1 burst — every minute 04:00-06:00 Copenhagen (Mon-Thu)
 
 [Timer]
-OnCalendar=Mon,Tue,Wed,Thu 02:50..59:00
-OnCalendar=Mon,Tue,Wed,Thu 03:00..10:00
-OnCalendar=Mon,Tue,Wed,Thu 03:50..59:00
-OnCalendar=Mon,Tue,Wed,Thu 04:00..10:00
+# Summer CEST (UTC+2): 04:00–06:00 local
+OnCalendar=Mon,Tue,Wed,Thu 02,03:*:00
+# Winter CET (UTC+1): 04:00–06:00 local
+OnCalendar=Mon,Tue,Wed,Thu 03,04:*:00
+AccuracySec=1s
 Persistent=false
 Unit=weddingbot.service
 

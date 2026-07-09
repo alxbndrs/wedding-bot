@@ -7,8 +7,10 @@ automatically. The phone call is what wakes you at 5 AM; the Telegram message
 carries the tappable booking link.
 
 New ceremony slots are released around **05:00 Danish time**, ~60 days ahead, on
-weekdays (Mon–Thu are ceremony days). The bot polls every minute in a window
-around that drop and stops for the day once it has notified you.
+weekdays (Mon–Thu are ceremony days). The bot polls hardest in a window around
+that drop — every minute from 04:00–06:00, down to every 30 seconds from
+04:50–05:10 — plus every 5 minutes through the day for cancellations, and stops
+for the day once it has notified you.
 
 ## How it works
 
@@ -113,14 +115,30 @@ elsewhere with `WEDDINGBOT_ENV_FILE=/path/to/env`.)
 
 ### Schedule
 
-- **Burst** (`weddingbot-burst.timer`): every minute, Mon–Thu, across the two
-  possible UTC placements of 04:50–05:10 Copenhagen (DST-safe — see the comment
-  in `weddingbot-burst.timer.j2`). Latches after the first alert each day.
+Slots drop at exactly 05:00 Danish time, so polling is layered in three tiers,
+all Mon–Thu, all DST-safe (each timer emits both the summer and winter UTC
+placements — see the comments in the `.timer.j2` templates). The bot **latches
+after the first alert each day** and goes quiet across every tier, so it never
+spams no matter how many timers overlap.
+
+- **Tier 1 — burst** (`weddingbot-burst.timer`): every **minute**, 04:00–06:00
+  Copenhagen. The wide net around the drop.
+- **Tier 2 — peak** (`weddingbot-peak.timer`): every **30 seconds**, 04:50–05:10
+  Copenhagen. Tight resolution for the exact moment slots appear.
+- **Tier 3 — watch** (`weddingbot-watch.timer`): every **5 minutes** through the
+  day, to catch slots freed by cancellations. On by default; toggle with
+  `weddingbot_watch_enabled`.
 - **Heartbeat** (`weddingbot-heartbeat.timer`): Monday 08:00, so a silent bot
   can be distinguished from a dead one. Toggle with
   `weddingbot_heartbeat_enabled`.
-- **Watch** (`weddingbot-watch.timer`): optional every-10-min daytime poll to
-  catch cancellations. Off by default — set `weddingbot_watch_enabled: true`.
+
+**No pile-ups / no double alerts even if the page loads slowly:** systemd runs
+only one instance of `weddingbot.service` at a time, so a timer tick that fires
+while a slow run is still going is simply **dropped** (never queued) — you can't
+get dozens of processes waiting. A `flock -n` guards manual-run collisions on
+top of that, and the daily latch means only the first run of the day can notify.
+All timers use `AccuracySec=1s` so the 30-second tier isn't smeared onto minute
+boundaries by systemd's default power-saving fuzz.
 
 Tuning knobs live in `ansible/inventory/group_vars/all.yml`.
 
