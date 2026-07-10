@@ -1,11 +1,13 @@
 # {{ ansible_managed }}
-# TIER 3 — cancellation watch: every 5 MINUTES through the day, Mon-Thu, to
-# catch slots freed by cancellations outside the morning drop window. Exact
-# local hours don't matter here (a cancellation can pop up any time), so this is
-# left in the server's UTC clock rather than DST-doubled. The bot latches after
-# any alert, so on a day it already notified you this stays quiet.
+# TIER 3 — cancellation watch: every 5 MINUTES through the day, EVERY DAY, to
+# catch slots freed by cancellations (and any new date published) outside the
+# morning drop window. Exact local hours don't matter here (a cancellation can
+# pop up any time), so this is left in the server's UTC clock rather than
+# DST-doubled. The bot latches after a slot alert, so on a day it already
+# notified you this stays quiet — but the new-date detector is exempt from the
+# latch, so a fresh date still gets through on any day of the week.
 [Unit]
-Description=Wedding bot TIER 3 cancellation watch — every 5 min daytime (Mon-Thu)
+Description=Wedding bot TIER 3 cancellation watch — every 5 min daytime (daily)
 
 [Timer]
 {% for spec in weddingbot_watch_oncalendar %}

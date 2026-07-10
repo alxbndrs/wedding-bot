@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><title></title></head>
+<body class="mdc-typography">
+<form id="mainForm" method="post" action="/aabenraavielse/vielse/ReserveTime/TimeSelection">
+	<input type="hidden" name="sessionid" id="sessionid" value="00000000-0000-0000-0000-000000000000" />
+<div class="section date-list ">
+	<!-- A date already present in no_slots.html — must NOT re-alert. -->
+	<div class="date one-queue">
+		<div class="title title-padded d-flex">
+			<span class="not-available header-text">Thursday September 3ʳᵈ, 2026</span>
+			<div class="ml-auto d-flex align-items-center text-danger warning-message">
+				<i class="fas fa-exclamation-triangle"></i>
+				<span>No more available time slots</span>
+			</div>
+		</div>
+	</div>
+	<!-- A NEWLY published date, later than anything seen before, and already
+	     fully booked (warning-message, no selectTime). The old slot heuristic
+	     would stay silent here; the new-date detector must alert. -->
+	<div class="date one-queue">
+		<div class="title title-padded d-flex">
+			<span class="not-available header-text">Monday September 7ᵗʰ, 2026</span>
+			<div class="ml-auto d-flex align-items-center text-danger warning-message">
+				<i class="fas fa-exclamation-triangle"></i>
+				<span>No more available time slots</span>
+			</div>
+		</div>
+	</div>
+</div>
+</form>
+</body>
+</html>

@@ -13,7 +13,7 @@ weddingbot_http_timeout: 30
 
 weddingbot_watch_enabled: true
 weddingbot_watch_oncalendar:
-  - "Mon,Tue,Wed,Thu 05..21:0/5:00"
+  - "05..21:0/5:00"   # every day (see group_vars for why not Mon-Thu)
 
 weddingbot_heartbeat_enabled: true
 weddingbot_heartbeat_oncalendar: "Mon 08:00"

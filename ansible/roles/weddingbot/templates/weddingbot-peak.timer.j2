@@ -1,9 +1,12 @@
 # {{ ansible_managed }}
-# TIER 2 — peak poll: every 30 SECONDS across 04:50–05:10 Copenhagen, Mon-Thu.
+# TIER 2 — peak poll: every 30 SECONDS across 04:50–05:10 Copenhagen, EVERY DAY.
 # This is the tight window right around the 05:00 drop, where slots can appear
 # and vanish within a minute. It overlaps tier 1 (every-minute) — that's fine,
 # both point at weddingbot.service and systemd runs only one at a time, so the
 # :30 ticks just add resolution the minute ticks don't have.
+#
+# Runs every day, not just Mon-Thu (see the burst timer): a Friday drop was
+# missed under the old ceremony-weekday-only schedule.
 #
 # Same DST handling as the burst timer (both UTC placements emitted):
 #   * CEST (summer, UTC+2): 04:50–05:10 local == 02:50–03:10 UTC
@@ -13,15 +16,15 @@
 # would collapse every :30 tick onto the minute boundary, silently turning this
 # back into a per-minute timer.
 [Unit]
-Description=Wedding bot TIER 2 peak — every 30s 04:50-05:10 Copenhagen (Mon-Thu)
+Description=Wedding bot TIER 2 peak — every 30s 04:50-05:10 Copenhagen (daily)
 
 [Timer]
 # Summer CEST (UTC+2): 04:50–05:10 local
-OnCalendar=Mon,Tue,Wed,Thu 02:50..59:0/30
-OnCalendar=Mon,Tue,Wed,Thu 03:00..10:0/30
+OnCalendar=*-*-* 02:50..59:0/30
+OnCalendar=*-*-* 03:00..10:0/30
 # Winter CET (UTC+1): 04:50–05:10 local
-OnCalendar=Mon,Tue,Wed,Thu 03:50..59:0/30
-OnCalendar=Mon,Tue,Wed,Thu 04:00..10:0/30
+OnCalendar=*-*-* 03:50..59:0/30
+OnCalendar=*-*-* 04:00..10:0/30
 AccuracySec=1s
 Persistent=false
 Unit=weddingbot.service

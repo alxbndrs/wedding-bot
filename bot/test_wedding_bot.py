@@ -5,6 +5,7 @@ Run: cd bot && python3 -m unittest
 No network and no Telegram calls happen — sends are monkeypatched.
 """
 
+import datetime
 import os
 import tempfile
 import unittest
@@ -42,6 +43,22 @@ class ParseDatesTest(unittest.TestCase):
     def test_error_page_raises_scrape_error(self):
         with self.assertRaises(wedding_bot.ScrapeError):
             wedding_bot.parse_dates(_fixture("error_page.html"))
+
+    def test_parse_date_name_handles_superscript_ordinals(self):
+        cases = {
+            "Wednesday July 15ᵗʰ, 2026": datetime.date(2026, 7, 15),
+            "Tuesday July 21ˢᵗ, 2026": datetime.date(2026, 7, 21),
+            "Thursday July 23ʳᵈ, 2026": datetime.date(2026, 7, 23),
+            "Tuesday September 1ˢᵗ, 2026": datetime.date(2026, 9, 1),
+            "Wednesday September 2ⁿᵈ, 2026": datetime.date(2026, 9, 2),
+            "Monday August 17ᵗʰ, 2026": datetime.date(2026, 8, 17),
+        }
+        for name, expected in cases.items():
+            self.assertEqual(wedding_bot.parse_date_name(name), expected, name)
+
+    def test_parse_date_name_returns_none_when_unparseable(self):
+        self.assertIsNone(wedding_bot.parse_date_name("Coming soon"))
+        self.assertIsNone(wedding_bot.parse_date_name(""))
 
     def test_empty_page_raises_scrape_error(self):
         with self.assertRaises(wedding_bot.ScrapeError):
@@ -144,6 +161,52 @@ class PollLogicTest(unittest.TestCase):
         wedding_bot.fetch_timeselection = self._fetch("no_slots.html")
         state = wedding_bot.run_poll(state)
         self.assertEqual(state["consecutive_failures"], 0)
+
+    def test_first_run_learns_calendar_silently(self):
+        # The initial poll (deploy) records the visible dates without alerting.
+        wedding_bot.fetch_timeselection = self._fetch("no_slots.html")
+        state = wedding_bot.run_poll({})
+        self.assertEqual(self._sent, [])
+        self.assertIn("2026-09-03", state["known_dates"])
+        self.assertEqual(state["latest_date"], "2026-09-03")
+
+    def test_new_but_fully_booked_date_is_silent(self):
+        # A later date appears but is fully booked ("No more available time
+        # slots"). It must be learned silently — NO notification.
+        wedding_bot.fetch_timeselection = self._fetch("no_slots.html")
+        state = wedding_bot.run_poll({})
+        wedding_bot.fetch_timeselection = self._fetch("new_date.html")
+        state = wedding_bot.run_poll(state)
+        self.assertEqual(self._sent, [])  # unavailable new date does not alert
+        self.assertEqual(self._calls, 0)
+        self.assertIn("2026-09-07", state["known_dates"])  # learned all the same
+        self.assertFalse(state.get("notified_today"))
+
+    def test_new_available_date_alerts_once_and_is_tagged(self):
+        # Learn the calendar, then a brand-new date appears that IS bookable.
+        # Exactly one alert, the new date is marked 🆕, and it latches for the day.
+        wedding_bot.fetch_timeselection = self._fetch("no_slots.html")
+        state = wedding_bot.run_poll({})
+        wedding_bot.fetch_timeselection = self._fetch("new_available_date.html")
+        state = wedding_bot.run_poll(state)
+        self.assertEqual(len(self._sent), 1)
+        self.assertIn("September 7", self._sent[0])
+        self.assertIn("🆕", self._sent[0])
+        self.assertNotIn("September 3", self._sent[0])  # booked date not listed
+        self.assertTrue(state["notified_today"])
+        # Same page next tick: latched, so still a single notification.
+        state = wedding_bot.run_poll(state)
+        self.assertEqual(len(self._sent), 1)
+
+    def test_only_one_notification_across_repeated_polls(self):
+        # The three timer tiers all hit the same state; the latch guarantees a
+        # single notification (message + call) no matter how many ticks fire.
+        wedding_bot.fetch_timeselection = self._fetch("has_slots.html")
+        state = wedding_bot.run_poll({})
+        for _ in range(5):
+            state = wedding_bot.run_poll(state)
+        self.assertEqual(len(self._sent), 1)
+        self.assertEqual(self._calls, 1)
 
 
 if __name__ == "__main__":

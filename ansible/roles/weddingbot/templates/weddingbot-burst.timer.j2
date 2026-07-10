@@ -1,7 +1,10 @@
 # {{ ansible_managed }}
-# TIER 1 — burst poll: every MINUTE across 04:00–06:00 Copenhagen, Mon-Thu.
+# TIER 1 — burst poll: every MINUTE across 04:00–06:00 Copenhagen, EVERY DAY.
 # This is the wide net around the 05:00 slot drop. The bot latches after the
 # first successful alert and skips the rest of the day, so this never spams.
+#
+# Runs every day, not just Mon-Thu: a new date was observed published on a
+# Friday, so we no longer assume drops only land on ceremony weekdays.
 #
 # The server clock is UTC. To hit 04:00–06:00 Copenhagen year-round WITHOUT
 # depending on the systemd-252 timezone prefix, we emit BOTH DST placements:
@@ -14,13 +17,13 @@
 # AccuracySec=1s is essential: the systemd default fuzzes timers by up to 1 min
 # for power saving, which would smear these ticks. We want them on the second.
 [Unit]
-Description=Wedding bot TIER 1 burst — every minute 04:00-06:00 Copenhagen (Mon-Thu)
+Description=Wedding bot TIER 1 burst — every minute 04:00-06:00 Copenhagen (daily)
 
 [Timer]
 # Summer CEST (UTC+2): 04:00–06:00 local
-OnCalendar=Mon,Tue,Wed,Thu 02,03:*:00
+OnCalendar=*-*-* 02,03:*:00
 # Winter CET (UTC+1): 04:00–06:00 local
-OnCalendar=Mon,Tue,Wed,Thu 03,04:*:00
+OnCalendar=*-*-* 03,04:*:00
 AccuracySec=1s
 Persistent=false
 Unit=weddingbot.service

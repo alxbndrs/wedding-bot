@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime
 import html
 import http.cookiejar
 import json
@@ -178,6 +179,48 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
+_MONTHS = {
+    "january": 1,
+    "february": 2,
+    "march": 3,
+    "april": 4,
+    "may": 5,
+    "june": 6,
+    "july": 7,
+    "august": 8,
+    "september": 9,
+    "october": 10,
+    "november": 11,
+    "december": 12,
+}
+
+
+def parse_date_name(name: str) -> datetime.date | None:
+    """Turn a header like 'Monday August 17ᵗʰ, 2026' into a ``date``.
+
+    The site renders the ordinal suffix as Unicode superscripts (17ᵗʰ, 21ˢᵗ),
+    so we don't try to read it — we pull the month word, then the first 1-2 digit
+    run after it as the day and the first 4-digit run as the year. Returns None
+    for anything we can't confidently parse, so a wording change degrades to
+    "unknown date" rather than a crash.
+    """
+    low = name.lower()
+    for month_name, month_num in _MONTHS.items():
+        idx = low.find(month_name)
+        if idx == -1:
+            continue
+        rest = name[idx + len(month_name) :]
+        day = re.search(r"(\d{1,2})", rest)
+        year = re.search(r"(\d{4})", rest)
+        if not (day and year):
+            return None
+        try:
+            return datetime.date(int(year.group(1)), month_num, int(day.group(1)))
+        except ValueError:
+            return None
+    return None
+
+
 class ScrapeError(Exception):
     """Raised when the page is not a recognizable TimeSelection page."""
 
@@ -298,13 +341,18 @@ def place_call() -> bool:
         return False
 
 
-def notify_slot(available: list[dict]) -> bool:
-    """Alert via every configured channel. True if at least one delivered."""
-    delivered_tg = send_telegram(build_alert(available))
+def _notify(text: str) -> bool:
+    """Push ``text`` to every configured channel. True if at least one landed."""
+    delivered_tg = send_telegram(text)
     delivered_call = place_call()
     if delivered_call:
         log("phone call placed via Twilio")
     return delivered_tg or delivered_call
+
+
+def notify_slot(available: list[dict], new_names: list[str] | None = None) -> bool:
+    """Alert that bookable time slots are open. True if at least one delivered."""
+    return _notify(build_alert(available, new_names))
 
 
 # --- State ------------------------------------------------------------------
@@ -350,14 +398,56 @@ def _today() -> str:
 # --- Core logic -------------------------------------------------------------
 
 
-def build_alert(available: list[dict]) -> str:
-    names = [d["name"] for d in available]
-    lines = "\n".join(f"• {html.escape(n)}" for n in names)
+def build_alert(available: list[dict], new_names: list[str] | None = None) -> str:
+    new_set = set(new_names or [])
+    lines = "\n".join(
+        f"• {html.escape(d['name'])}" + (" 🆕" if d["name"] in new_set else "")
+        for d in available
+    )
     return (
         "🔔 <b>Wedding slot(s) available!</b>\n\n"
         f"{lines}\n\n"
         f'👉 <a href="{html.escape(BOOKING_URL)}">Open the booking page and book now</a>'
     )
+
+
+def note_new_dates(state: dict, dates: list[dict]) -> list[str]:
+    """Track calendar dates in state — silently, never alerting on its own.
+
+    Reads only the date headers (stable markup) to keep ``state["known_dates"]``
+    (future dates seen, pruned to today-onward so it can't grow forever) and
+    ``state["latest_date"]`` current — the latter feeds the heartbeat. A date that
+    is brand-new but still fully booked is learned here and NOT announced; only the
+    single slot-alert path notifies, and only for dates that are actually bookable.
+
+    Returns the names of dates that are BOTH newly-appeared AND available, so the
+    slot alert can tag them with 🆕. Returns [] on the very first run so a fresh
+    deploy stays silent regardless of what's on the page.
+    """
+    today = datetime.date.today()
+    visible = {}  # iso -> the date dict (name + available), future dates only
+    for d in dates:
+        parsed = parse_date_name(d["name"])
+        if parsed and parsed >= today:
+            visible[parsed.isoformat()] = d
+    if not visible:
+        return []  # nothing parseable — leave known_dates untouched
+
+    first_run = "known_dates" not in state
+    today_iso = today.isoformat()
+    known = {iso for iso in state.get("known_dates", []) if iso >= today_iso}
+    new_available = [
+        d["name"]
+        for iso, d in sorted(visible.items())
+        if iso not in known and d["available"]
+    ]
+
+    state["known_dates"] = sorted(known | set(visible))
+    state["latest_date"] = max(visible)
+    if first_run:
+        log(f"learned {len(visible)} calendar dates; latest {max(visible)}")
+        return []  # deploy stays silent
+    return new_available
 
 
 def run_poll(state: dict) -> dict:
@@ -373,11 +463,9 @@ def run_poll(state: dict) -> dict:
         state["notified_today"] = False
         state["last_alert"] = {}
 
-    # Stop-once-notified: during a burst window we don't re-poll after a hit.
-    if state.get("notified_today"):
-        log("already notified today; skipping poll")
-        return state
-
+    # Fetch on every tick. Unlike the slot latch below, the new-date detector
+    # must run even on a day we've already sent a slot alert — a fresh date can be
+    # published at any time, and that's the event we most recently missed.
     try:
         page = fetch_timeselection()
         dates = parse_dates(page)
@@ -404,6 +492,20 @@ def run_poll(state: dict) -> dict:
         f"{len(available)} available: {avail_names or '[]'}"
     )
 
+    # Track the calendar silently (heartbeat + 🆕 tagging). This never notifies on
+    # its own: a brand-new but fully-booked date is learned quietly here, so the
+    # ONLY thing that pings you is the slot alert below — and only for bookable
+    # dates. `new_available` is the subset of available dates never seen before.
+    new_available = note_new_dates(state, dates)
+
+    # One alert per day: the latch below means all three timer tiers together
+    # deliver a single notification, whichever tick catches the slot first.
+    if state.get("notified_today"):
+        log("already alerted a slot today; skipping slot alert")
+        state["last_available"] = avail_names
+        state["last_check"] = now
+        return state
+
     last_alert = state.get("last_alert", {})  # name -> epoch seconds
     stale = now - RENOTIFY_MINUTES * 60
     to_alert = [
@@ -411,7 +513,7 @@ def run_poll(state: dict) -> dict:
     ]
 
     if to_alert:
-        if notify_slot(available):
+        if notify_slot(available, new_available):
             state["notified_today"] = True
             for d in available:
                 last_alert[d["name"]] = now
@@ -455,10 +557,12 @@ def cmd_heartbeat(state: dict) -> int:
     )
     avail = state.get("last_available") or []
     fails = state.get("consecutive_failures", 0)
+    latest = state.get("latest_date") or "unknown"
     ok = send_telegram(
         "💓 <b>Wedding bot heartbeat.</b>\n"
         f"Last check: {when}\n"
         f"Currently available: {', '.join(avail) if avail else 'none'}\n"
+        f"Latest date on calendar: {latest}\n"
         f"Consecutive failures: {fails}"
     )
     return 0 if ok else 1

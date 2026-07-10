@@ -6,11 +6,13 @@ you can open the browser and book it yourself. It does not book anything
 automatically. The phone call is what wakes you at 5 AM; the Telegram message
 carries the tappable booking link.
 
-New ceremony slots are released around **05:00 Danish time**, ~60 days ahead, on
-weekdays (Mon–Thu are ceremony days). The bot polls hardest in a window around
-that drop — every minute from 04:00–06:00, down to every 30 seconds from
-04:50–05:10 — plus every 5 minutes through the day for cancellations, and stops
-for the day once it has notified you.
+New ceremony slots are released around **05:00 Danish time**, ~60 days ahead.
+The bot polls **every day** (it was originally Mon–Thu only, on the assumption
+that dates drop only on ceremony weekdays — until a date turned up on a Friday)
+hardest in a window around that drop — every minute from 04:00–06:00, down to
+every 30 seconds from 04:50–05:10 — plus every 5 minutes through the day for
+cancellations and newly-published dates, and stops re-alerting slots for the day
+once it has notified you.
 
 ## How it works
 
@@ -22,8 +24,16 @@ for the day once it has notified you.
   2. Parses every date section and detects which have bookable time slots.
   3. If any date is available, sends a Telegram alert with a link to the booking
      page and (if Twilio is configured) places a phone call that reads out a
-     spoken alert, then **latches** so it won't poll or re-alert again that day.
-  4. Diffs against `~/state/state.json` for de-duplication, counts consecutive
+     spoken alert, then **latches** so it won't re-alert a slot again that day.
+  4. Independently tracks the set of dates on the calendar in
+     `~/state/state.json` and alerts the moment a **date it has never seen
+     before** appears — even if that date is already fully booked. This is the
+     robust signal: it reads only the date headers (stable markup), so it fires
+     when a new batch is published even if the slots get grabbed between two
+     polls, or if the "bookable" markup differs from what the slot parser
+     expects. Unlike the slot alert, it is *not* latched per day. The very first
+     poll after deploy learns the current calendar silently (no alert storm).
+  5. Diffs against `~/state/state.json` for de-duplication, counts consecutive
      failures, and warns once (via Telegram) if the site scrape keeps failing.
 - Deployed to your OVH server by Ansible as a dedicated non-sudo `weddingbot`
   user, driven by **systemd user timers** (no cron, survives reboots via linger).
@@ -116,10 +126,12 @@ elsewhere with `WEDDINGBOT_ENV_FILE=/path/to/env`.)
 ### Schedule
 
 Slots drop at exactly 05:00 Danish time, so polling is layered in three tiers,
-all Mon–Thu, all DST-safe (each timer emits both the summer and winter UTC
-placements — see the comments in the `.timer.j2` templates). The bot **latches
-after the first alert each day** and goes quiet across every tier, so it never
-spams no matter how many timers overlap.
+**every day of the week**, all DST-safe (each timer emits both the summer and
+winter UTC placements — see the comments in the `.timer.j2` templates). It was
+Mon–Thu only until a date was seen published on a Friday. The bot **latches
+after the first slot alert each day** and goes quiet across every tier, so it
+never spams no matter how many timers overlap (the new-date alert is exempt from
+the latch).
 
 - **Tier 1 — burst** (`weddingbot-burst.timer`): every **minute**, 04:00–06:00
   Copenhagen. The wide net around the drop.
