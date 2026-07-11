@@ -52,8 +52,27 @@ class ParseDatesTest(unittest.TestCase):
         self.assertEqual(len(dates), 21)
         available = [d for d in dates if d["available"]]
         self.assertEqual([d["name"] for d in available], ["Tuesday September 8ᵗʰ, 2026"])
+        # The exact bookable time is pulled from the real anchor/span markup.
+        self.assertEqual(available[0]["times"], ["12:00 p.m."])
         # Every other date on the real page is fully booked.
         self.assertEqual(sum(1 for d in dates if not d["available"]), 20)
+
+    def test_parse_captures_multiple_times_from_button_form(self):
+        # The synthetic fixture models slots as <button>HH:MM</button> controls;
+        # both time labels must be captured in order.
+        dates = wedding_bot.parse_dates(_fixture("has_slots.html"))
+        available = [d for d in dates if d["available"]]
+        self.assertEqual(available[0]["times"], ["09:00", "10:00"])
+        # Booked dates carry no times.
+        self.assertTrue(all(d["times"] == [] for d in dates if not d["available"]))
+
+    def test_alert_lists_the_available_times(self):
+        alert = wedding_bot.build_alert(
+            [{"name": "Monday August 17ᵗʰ, 2026", "available": True,
+              "times": ["09:00", "10:00"]}]
+        )
+        self.assertIn("Monday August 17ᵗʰ, 2026", alert)
+        self.assertIn("09:00, 10:00", alert)
 
     def test_error_page_raises_scrape_error(self):
         with self.assertRaises(wedding_bot.ScrapeError):

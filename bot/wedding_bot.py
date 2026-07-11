@@ -125,6 +125,9 @@ class _TimeSelectionParser(HTMLParser):
         self._cur_name: list[str] = []
         self._cur_text: list[str] = []  # all text inside the current date div
         self._found_select_time = False
+        self._cur_times: list[str] = []  # bookable time labels for this date
+        self._time_depth = 0  # tag nesting inside the current selectTime control
+        self._time_buf: list[str] = []
 
     def handle_starttag(self, tag, attrs):
         attrd = dict(attrs)
@@ -136,6 +139,9 @@ class _TimeSelectionParser(HTMLParser):
             self._cur_name = []
             self._cur_text = []
             self._found_select_time = False
+            self._cur_times = []
+            self._time_depth = 0
+            self._time_buf = []
             return
         if not self._in_date:
             return
@@ -143,14 +149,27 @@ class _TimeSelectionParser(HTMLParser):
             self._depth += 1
         if "header-text" in classes:
             self._capture_header = True
-        # An available slot is a control wired to selectTime(...).
+        # An available slot is a control wired to selectTime(...). Capture the
+        # label text inside it (the clock time) so the alert can name the exact
+        # slots. The control is a <button>09:00</button> or an <a> wrapping a
+        # <span ...>12:00 p.m.</span>, so we grab all text until it closes.
         onclick = attrd.get("onclick", "")
-        if "selectTime" in onclick:
+        if "selectTime" in onclick and self._time_depth == 0:
             self._found_select_time = True
+            self._time_depth = 1
+            self._time_buf = []
+        elif self._time_depth:
+            self._time_depth += 1
 
     def handle_endtag(self, tag):
         if not self._in_date:
             return
+        if self._time_depth:
+            self._time_depth -= 1
+            if self._time_depth == 0:
+                label = _clean(" ".join(self._time_buf))
+                if label:
+                    self._cur_times.append(label)
         if self._capture_header and tag == "span":
             self._capture_header = False
         if tag == "div":
@@ -163,6 +182,8 @@ class _TimeSelectionParser(HTMLParser):
             return
         if self._capture_header:
             self._cur_name.append(data)
+        if self._time_depth:
+            self._time_buf.append(data)
         self._cur_text.append(data)
 
     def _close_date(self):
@@ -171,7 +192,9 @@ class _TimeSelectionParser(HTMLParser):
         has_marker = NO_SLOTS_MARKER.lower() in body.lower()
         available = self._found_select_time or not has_marker
         if name:
-            self.dates.append({"name": name, "available": available})
+            self.dates.append(
+                {"name": name, "available": available, "times": list(self._cur_times)}
+            )
         self._in_date = False
 
 
@@ -400,10 +423,16 @@ def _today() -> str:
 
 def build_alert(available: list[dict], new_names: list[str] | None = None) -> str:
     new_set = set(new_names or [])
-    lines = "\n".join(
-        f"• {html.escape(d['name'])}" + (" 🆕" if d["name"] in new_set else "")
-        for d in available
-    )
+    parts = []
+    for d in available:
+        line = f"• {html.escape(d['name'])}"
+        if d["name"] in new_set:
+            line += " 🆕"
+        times = d.get("times") or []
+        if times:
+            line += "\n    🕐 " + html.escape(", ".join(times))
+        parts.append(line)
+    lines = "\n".join(parts)
     return (
         "🔔 <b>Wedding slot(s) available!</b>\n\n"
         f"{lines}\n\n"
