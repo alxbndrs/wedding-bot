@@ -40,6 +40,21 @@ class ParseDatesTest(unittest.TestCase):
             ["Tuesday August 18ᵗʰ, 2026", "Wednesday August 19ᵗʰ, 2026"],
         )
 
+    def test_real_captured_page_detects_the_one_open_date(self):
+        # Ground truth: a page captured live from the booking site with exactly
+        # one bookable date. Its open-slot markup differs from the synthetic
+        # fixtures — the time is an <a onclick="selectTime(...)"> anchor inside a
+        # <ul class="times-list">, and the open date's header is a plain
+        # "header-text" span (booked dates carry "not-available header-text").
+        # This guards against a parser change that only works on the synthetic
+        # <button> form and silently misses real availability.
+        dates = wedding_bot.parse_dates(_fixture("real_available.html"))
+        self.assertEqual(len(dates), 21)
+        available = [d for d in dates if d["available"]]
+        self.assertEqual([d["name"] for d in available], ["Tuesday September 8ᵗʰ, 2026"])
+        # Every other date on the real page is fully booked.
+        self.assertEqual(sum(1 for d in dates if not d["available"]), 20)
+
     def test_error_page_raises_scrape_error(self):
         with self.assertRaises(wedding_bot.ScrapeError):
             wedding_bot.parse_dates(_fixture("error_page.html"))
